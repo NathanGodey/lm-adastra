@@ -1,0 +1,17 @@
+{
+    "total_nb_steps": 1000,
+    "warmup_steps": 0,
+    "min_lr_rate": 0.1,
+    "learning_rate": 3e-4,
+    "weight_decay": 1e-1,
+    "schedule_type": "linear",
+    "generate_samples": false,
+    "torch_compile": true,
+    "hf_load_weights": true,
+    "device_map_mode": "auto",
+    "optim_kwargs": {
+        "eps": 1e-8,
+        "betas": [0.9, 0.95],
+        "fused": true
+    }
+}

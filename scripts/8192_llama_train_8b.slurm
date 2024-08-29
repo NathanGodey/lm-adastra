@@ -6,7 +6,7 @@
 #SBATCH --error=./logs/%x_%j.out
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=8
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=8
 #SBATCH --exclusive
 #SBATCH --hint=nomultithread
 #SBATCH --time=01:00:00
@@ -14,9 +14,13 @@
 
 module purge
 
-module load cpe/23.05
+module load cpe/23.12
 module load craype-accel-amd-gfx90a craype-x86-trento
+module load PrgEnv-gnu
 module load cray-python/3.11.5
+module load amd-mixed/6.0.0
+module load torch/2.3.0
+
 
 source rocm6-venv/bin/activate
 
@@ -33,11 +37,11 @@ export MPICH_GPU_SUPPORT_ENABLED=1
 
 export GPU_ARCHS="gfx90a"
 
-srun --ntasks-per-node=8 --cpus-per-task 1 --cpu-bind cores \
-python train.py --config=configs/pythia_70m.json --num_nodes 1 \
---grad_clip_val 1 --global_bs 64 --train_bs 8 --val_bs 8 --precision "bf16-mixed" --attn_type sdpa \
---hf_path 'EleutherAI/pythia-70m' --hf_model_cls "GPTNeoXForCausalLM" \
---run_name "pythia-70m-bf16-comp" \
---dataset /lus/work/CT10/cad14911/ngodey/data/processed/redpajama_1B_2048_pythia \
---strategy ddp --hf_tokenizer 'EleutherAI/pythia-70m' --model_max_seq_len 2048 --saved_ckpt_path "${SCRATCHDIR}/ckpts" \
---ckpt_every 100
+srun --ntasks-per-node=8 --cpus-per-task 8 --cpu-bind cores \
+python train.py --config=configs/llama_8b.json --num_nodes 1 \
+--grad_clip_val 1 --global_bs 16 --train_bs 1 --val_bs 1 --precision "bf16-true" --attn_type flash_attention_2 \
+--hf_path 'meta-llama/Meta-Llama-3-8B' --hf_model_cls "LlamaForCausalLM" \
+--run_name "llama8b-bf16-fa-ds3-sl8k" --grad_ckpt \
+--dataset /lus/work/CT10/cad14911/ngodey/data/processed/fineweb_10BT_llama3_sl8193 \
+--strategy deepspeed_stage_3 --hf_tokenizer 'meta-llama/Meta-Llama-3-8B' --model_max_seq_len 8192 \
+--saved_ckpt_path "${SCRATCHDIR}/ckpts" --ckpt_every 100

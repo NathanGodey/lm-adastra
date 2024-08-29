@@ -16,9 +16,13 @@ module purge
 
 module load cpe/23.05
 module load craype-accel-amd-gfx90a craype-x86-trento
+module load PrgEnv-gnu
+module load amd-mixed/6.0.0
+module load torch/2.3.0
 module load cray-python/3.11.5
+module load aws-ofi-rccl
 
-source rocm6-venv/bin/activate
+source venv/bin/activate
 
 export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -34,10 +38,4 @@ export MPICH_GPU_SUPPORT_ENABLED=1
 export GPU_ARCHS="gfx90a"
 
 srun --ntasks-per-node=8 --cpus-per-task 1 --cpu-bind cores \
-python train.py --config=configs/pythia_70m.json --num_nodes 1 \
---grad_clip_val 1 --global_bs 64 --train_bs 8 --val_bs 8 --precision "bf16-mixed" --attn_type sdpa \
---hf_path 'EleutherAI/pythia-70m' --hf_model_cls "GPTNeoXForCausalLM" \
---run_name "pythia-70m-bf16-comp" \
---dataset /lus/work/CT10/cad14911/ngodey/data/processed/redpajama_1B_2048_pythia \
---strategy ddp --hf_tokenizer 'EleutherAI/pythia-70m' --model_max_seq_len 2048 --saved_ckpt_path "${SCRATCHDIR}/ckpts" \
---ckpt_every 100
+python tests/flash_benchmark.py

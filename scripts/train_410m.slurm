@@ -34,10 +34,10 @@ export MPICH_GPU_SUPPORT_ENABLED=1
 export GPU_ARCHS="gfx90a"
 
 srun --ntasks-per-node=8 --cpus-per-task 1 --cpu-bind cores \
-python train.py --config=configs/pythia_70m.json --num_nodes 1 \
---grad_clip_val 1 --global_bs 64 --train_bs 8 --val_bs 8 --precision "bf16-mixed" --attn_type sdpa \
---hf_path 'EleutherAI/pythia-70m' --hf_model_cls "GPTNeoXForCausalLM" \
---run_name "pythia-70m-bf16-comp" \
+python train.py --config=configs/pythia_410m.json --num_nodes 1 \
+--grad_clip_val 0 --global_bs 64 --train_bs 8 --val_bs 8 --precision "bf16-mixed" --attn_type sdpa \
+--hf_path 'EleutherAI/pythia-410m' --hf_model_cls "GPTNeoXForCausalLM" \
+--run_name "pythia-410m-bf16-sdpa-comp" \
 --dataset /lus/work/CT10/cad14911/ngodey/data/processed/redpajama_1B_2048_pythia \
 --strategy ddp --hf_tokenizer 'EleutherAI/pythia-70m' --model_max_seq_len 2048 --saved_ckpt_path "${SCRATCHDIR}/ckpts" \
 --ckpt_every 100

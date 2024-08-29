@@ -1,20 +1,19 @@
-from datasets import load_dataset
+from pathlib import Path
+import pyarrow.parquet as pq
+from litdata import optimize, TokensLoader
 from transformers import AutoTokenizer
-import numpy as np
-import psutil
-import functools
-import operator
+from functools import partial
 import argparse
 import torch
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num_proc")
 parser.add_argument("--batch_size")
 parser.add_argument("--max_seq_len")
-parser.add_argument("--modulo", default=1)
+parser.add_argument("--node_id", default=0)
+parser.add_argument("--num_nodes", default=1)
 parser.add_argument("--tokenizer")
-parser.add_argument("--dataset_name")
+parser.add_argument("--dataset_path")
 parser.add_argument("--dataset_config", default="default")
 parser.add_argument("--output_path")
 
@@ -24,30 +23,38 @@ args = parser.parse_args()
 num_proc = int(args.num_proc)
 max_seq_len = int(args.max_seq_len)
 batch_size = int(args.batch_size)
-modulo = int(args.modulo)
+node_id = int(args.node_id)
+num_nodes = int(args.num_nodes)
 tokenizer = args.tokenizer
-dataset_name = args.dataset_name
+dataset_path = args.dataset_path
 dataset_config = args.dataset_config
 output_path = args.output_path
 
-NUM_CPU = psutil.cpu_count()
-num_proc = min(NUM_CPU//2, num_proc)
-
-print(f"Using {num_proc} CPUs...")
+if num_nodes > 1:
+    output_path = output_path + f"/node_{node_id}"
 
 tokenizer = AutoTokenizer.from_pretrained(tokenizer, token="MY_HF_TOKEN")
 
-def tokenize_and_pack(batch, max_seq_len=max_seq_len):
-    tokenized_batch = tokenizer(batch["text"]).input_ids
-    tokenized_batch_flat = functools.reduce(operator.iconcat, tokenized_batch, [])
-    packed_batch = torch.tensor(tokenized_batch_flat[:-(len(tokenized_batch_flat)%max_seq_len)]).reshape(-1, max_seq_len)
-    return list(packed_batch)
+# 1. Define a function to convert the text within the parquet files into tokens
+def tokenize_fn(filepath, tokenizer=None, batch_size=8192):
+    parquet_file = pq.ParquetFile(filepath)
+    # Process per batch to reduce RAM usage
+    for batch in parquet_file.iter_batches(batch_size=batch_size, columns=["text"]):
+        for text in batch.to_pandas()["text"]:
+            tokens = tokenizer.encode(text)
+            yield torch.tensor(tokens+[tokenizer.eos_token_id])
 
-print("Loading dataset...")
-ds = load_dataset(dataset_name, dataset_config, num_proc=num_proc)
+# 2. Generate the inputs
+inputs = [str(file) for i, file in enumerate(Path(dataset_path).rglob("*.parquet")) if i%num_nodes == node_id]
 
-print("Packing dataset...")
-ds = ds.map(lambda x: {"packed":tokenize_and_pack(x)}, remove_columns=ds['train'].column_names, batched=True, batch_size=batch_size, num_proc=num_proc)
-
-print("Saving dataset...")
-ds.save_to_disk(output_path, num_proc=num_proc)
+if __name__ == "__main__":
+# 3. Store the optimized data wherever you want under "/teamspace/datasets" or "/teamspace/s3_connections"
+    print(f"Node {node_id} processing {len(inputs)} files: \n"+"\n".join(inputs))
+    outputs = optimize(
+        fn=partial(tokenize_fn, tokenizer=tokenizer, batch_size=batch_size), # Note: Use HF tokenizer or any others
+        inputs=inputs,
+        num_workers=num_proc if num_proc > 0 else None,
+        output_dir=output_path,
+        chunk_size=(max_seq_len * 8012), # Number of tokens to store by chunks. This is roughly 64MB of tokens per chunk.
+        item_loader=TokensLoader(),
+    )
